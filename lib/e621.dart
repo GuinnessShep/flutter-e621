@@ -205,8 +205,14 @@ class ApiFailureException implements Exception {
   }
 }
 
-Future<PostResponse> fetchPosts() async {
-  final resp = await http.get('https://e621.net/posts.json');
+Future<PostResponse> fetchPosts([String tags]) async {
+  Map<String, String> params = {};
+  if (tags != null && tags.isNotEmpty) {
+    params['tags'] = tags;
+  }
+  final uri = Uri.https('e621.net', '/posts.json', params);
+
+  final resp = await http.get(uri);
 
   if (resp.statusCode == 200) {
     return PostResponse.fromJson(json.decode(resp.body));
