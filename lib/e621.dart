@@ -3,7 +3,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-enum Rating { Safe, Questionable, Explicit }
+enum Rating { safe, questionable, explicit }
 
 class InvalidRatingException implements Exception {
   final String _providedRating;
@@ -18,11 +18,11 @@ class InvalidRatingException implements Exception {
 Rating parseRating(String rating) {
   switch (rating) {
     case 's':
-      return Rating.Safe;
+      return Rating.safe;
     case 'q':
-      return Rating.Questionable;
+      return Rating.questionable;
     case 'e':
-      return Rating.Explicit;
+      return Rating.explicit;
   }
 
   throw InvalidRatingException(rating);
@@ -83,18 +83,20 @@ class Post {
   }
 
   String get bestPreviewURL {
-    if (sample == null || sample.url == null) {
+    if (sample == null || sample.url == null || isFlash) {
       return preview.url;
     }
 
     return sample.url;
   }
 
+  bool get isFlash => file.ext == "swf";
+
   List<String> get artists {
     return tags.isEmpty
         ? ["unknown"]
         : tags
-            .where((tag) => tag.type == TagType.Artist)
+            .where((tag) => tag.type == TagType.artist)
             .map((tag) => tag.name)
             .toList();
   }
@@ -145,14 +147,14 @@ class PostPreview {
 }
 
 enum TagType {
-  General,
-  Species,
-  Character,
-  Copyright,
-  Artist,
-  Invalid,
-  Lore,
-  Meta
+  general,
+  species,
+  character,
+  copyright,
+  artist,
+  invalid,
+  lore,
+  meta
 }
 
 class InvalidTagTypeException implements Exception {
@@ -168,21 +170,21 @@ class InvalidTagTypeException implements Exception {
 TagType parseTagType(String tagType) {
   switch (tagType) {
     case 'general':
-      return TagType.General;
+      return TagType.general;
     case 'species':
-      return TagType.Species;
+      return TagType.species;
     case 'character':
-      return TagType.Character;
+      return TagType.character;
     case 'copyright':
-      return TagType.Copyright;
+      return TagType.copyright;
     case 'artist':
-      return TagType.Artist;
+      return TagType.artist;
     case 'invalid':
-      return TagType.Invalid;
+      return TagType.invalid;
     case 'lore':
-      return TagType.Lore;
+      return TagType.lore;
     case 'meta':
-      return TagType.Meta;
+      return TagType.meta;
   }
 
   throw InvalidTagTypeException(tagType);

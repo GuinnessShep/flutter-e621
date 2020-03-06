@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:photo_view/photo_view.dart';
 
 import 'e621.dart';
@@ -48,7 +49,9 @@ class _SearchIndexViewState extends State<SearchIndexView> {
 
   Widget buildGridWithRefresh(BuildContext context, PostResponse postResponse) {
     return RefreshIndicator(
-        child: PostGridView(postResponse: postResponse),
+        child: Container(
+            padding: EdgeInsets.all(8),
+            child: PostGridView(postResponse: postResponse)),
         onRefresh: () async {
           setState(() {
             this.postResponse = fetchPosts(search);
@@ -112,17 +115,18 @@ class PostGridView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GridView.count(
-        primary: true,
-        padding: const EdgeInsets.all(8),
-        crossAxisCount: MediaQuery.of(context).size.width ~/ 160,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
-        children: postResponse.posts
-            // TODO: this where clause is really weird
-            .where((post) => post.bestPreviewURL != null)
-            .map<Widget>((post) => PostContainer(post: post))
-            .toList());
+    final posts = postResponse.posts
+        .where((post) => post.bestPreviewURL != null && !post.isFlash)
+        .toList();
+
+    return StaggeredGridView.countBuilder(
+        // primary: true,
+        crossAxisCount: 4,
+        itemCount: posts.length,
+        itemBuilder: (context, index) => PostContainer(post: posts[index]),
+        staggeredTileBuilder: (index) => StaggeredTile.fit(2),
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8);
   }
 }
 
@@ -136,20 +140,32 @@ class PostContainer extends StatelessWidget {
   String get heroTag => 'post-${post.id}';
 
   Widget smallView(BuildContext context) {
+    final width = (MediaQuery.of(context).size.width - 24) / 2;
+    final ratio = (width / post.sample.width);
+    final height = post.sample.height * ratio;
+
     final image = CachedNetworkImage(
+        width: width,
+        height: height,
         imageUrl: isLargeView ? post.file.url : post.bestPreviewURL,
-        placeholder: (context, url) => CircularProgressIndicator());
+        placeholder: (context, url) =>
+            Center(child: CircularProgressIndicator()),
+        errorWidget: (builder, _url, _err) => Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [Text('Error loading preview')]));
 
-    final hero = Hero(tag: heroTag, child: image);
+    final hero = Hero(
+        tag: heroTag,
+        child: ClipRRect(borderRadius: BorderRadius.circular(8), child: image));
 
-    return Scaffold(
-        body: GestureDetector(
-            onTap: () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) {
-                return PostContainer(post: post, isLargeView: true);
-              }));
-            },
-            child: Center(child: hero)));
+    return GestureDetector(
+        onTap: () {
+          Navigator.push(context, MaterialPageRoute(builder: (_) {
+            return PostContainer(post: post, isLargeView: true);
+          }));
+        },
+        child: Container(height: height, child: hero));
   }
 
   void viewDetails(BuildContext context) {
@@ -180,15 +196,8 @@ class PostContainer extends StatelessWidget {
 
   Widget loadingBuilder(BuildContext context, ImageChunkEvent event) {
     return Center(
-      child: Container(
-        width: 20,
-        height: 20,
-        child: CircularProgressIndicator(
-          value: event == null
-              ? 0
-              : event.cumulativeBytesLoaded / event.expectedTotalBytes,
-        ),
-      ),
+      child:
+          Container(width: 20, height: 20, child: CircularProgressIndicator()),
     );
   }
 
@@ -228,7 +237,7 @@ class PostDetails extends StatelessWidget {
 
   Widget sectionHeading(BuildContext context, String heading) {
     return Padding(
-        child: Text(heading, style: Theme.of(context).textTheme.display1),
+        child: Text(heading, style: Theme.of(context).textTheme.headline5),
         padding: EdgeInsets.only(top: 8));
   }
 
@@ -243,7 +252,7 @@ class PostDetails extends StatelessWidget {
               ListTile(
                   title: Center(
                       child: Text(tag.name,
-                          style: Theme.of(context).textTheme.display1))),
+                          style: Theme.of(context).textTheme.headline4))),
               ListTile(
                   leading: Icon(Icons.search),
                   title: Text('Search for this tag'),
