@@ -5,6 +5,8 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
+import 'package:flutter_vlc_player/vlc_player.dart';
+import 'package:flutter_vlc_player/vlc_player_controller.dart';
 import 'package:photo_view/photo_view.dart';
 
 import 'e621.dart';
@@ -174,7 +176,29 @@ class PostContainer extends StatelessWidget {
     return GestureDetector(
         onTap: () {
           Navigator.push(context, MaterialPageRoute(builder: (_) {
-            return PostContainer(post: post, isLargeView: true, search: search);
+            if (post.file.ext == 'webm') {
+              final width = MediaQuery.of(context).size.width;
+              final ratio = (post.file.width ~/ width);
+              final height = post.file.height * ratio;
+              final controller = VlcPlayerController();
+              return Scaffold(
+                  appBar: AppBar(title: Text(post.id.toString())),
+                  body: SafeArea(child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: <Widget>[
+                        VlcPlayer(
+                            defaultHeight: height,
+                            defaultWidth: width.toInt(),
+                            url: post.file.url,
+                            controller: controller,
+                            placeholder:
+                                Center(child: CircularProgressIndicator()))
+                      ])));
+            } else {
+              return PostContainer(
+                  post: post, isLargeView: true, search: search);
+            }
           }));
         },
         child: Container(height: height, child: hero));
@@ -375,8 +399,9 @@ class _SearchViewState extends State<SearchView> {
   @override
   Widget build(BuildContext context) {
     final textController = TextEditingController();
-    textController.text = search == null ? '': search.trim() + ' ';
-    textController.selection = TextSelection.collapsed(offset: textController.text.length);
+    textController.text = search == null ? '' : search.trim() + ' ';
+    textController.selection =
+        TextSelection.collapsed(offset: textController.text.length);
 
     return Scaffold(
         appBar: AppBar(
