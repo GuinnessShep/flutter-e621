@@ -92,12 +92,14 @@ class Post {
 
   bool get isFlash => file.ext == "swf";
 
+  final List<String> _removeArtists = ['conditional_dnp'];
   List<String> get artists {
     return tags.isEmpty
         ? ["unknown"]
         : tags
             .where((tag) => tag.type == TagType.artist)
             .map((tag) => tag.name)
+            .where((tag) => !_removeArtists.contains(tag))
             .toList();
   }
 }

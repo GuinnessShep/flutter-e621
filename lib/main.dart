@@ -1,3 +1,6 @@
+import 'dart:developer';
+
+import 'package:filesize/filesize.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -50,8 +53,8 @@ class _SearchIndexViewState extends State<SearchIndexView> {
   Widget buildGridWithRefresh(BuildContext context, PostResponse postResponse) {
     return RefreshIndicator(
         child: Container(
-            padding: EdgeInsets.all(8),
-            child: PostGridView(postResponse: postResponse)),
+            padding: EdgeInsets.fromLTRB(8, 0, 8, 16),
+            child: PostGridView(postResponse: postResponse, search: search)),
         onRefresh: () async {
           setState(() {
             this.postResponse = fetchPosts(search);
@@ -110,8 +113,11 @@ class _SearchIndexViewState extends State<SearchIndexView> {
 
 class PostGridView extends StatelessWidget {
   final PostResponse postResponse;
+  final String search;
 
-  const PostGridView({Key key, this.postResponse}) : super(key: key);
+  const PostGridView(
+      {Key key, @required this.postResponse, @required this.search})
+      : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -120,10 +126,11 @@ class PostGridView extends StatelessWidget {
         .toList();
 
     return StaggeredGridView.countBuilder(
-        // primary: true,
+        primary: true,
         crossAxisCount: 4,
         itemCount: posts.length,
-        itemBuilder: (context, index) => PostContainer(post: posts[index]),
+        itemBuilder: (context, index) =>
+            PostContainer(post: posts[index], search: search),
         staggeredTileBuilder: (index) => StaggeredTile.fit(2),
         mainAxisSpacing: 8,
         crossAxisSpacing: 8);
@@ -133,8 +140,13 @@ class PostGridView extends StatelessWidget {
 class PostContainer extends StatelessWidget {
   final Post post;
   final bool isLargeView;
+  final String search;
 
-  const PostContainer({Key key, this.post, this.isLargeView = false})
+  const PostContainer(
+      {Key key,
+      @required this.post,
+      this.isLargeView = false,
+      @required this.search})
       : super(key: key);
 
   String get heroTag => 'post-${post.id}';
@@ -162,7 +174,7 @@ class PostContainer extends StatelessWidget {
     return GestureDetector(
         onTap: () {
           Navigator.push(context, MaterialPageRoute(builder: (_) {
-            return PostContainer(post: post, isLargeView: true);
+            return PostContainer(post: post, isLargeView: true, search: search);
           }));
         },
         child: Container(height: height, child: hero));
@@ -172,6 +184,7 @@ class PostContainer extends StatelessWidget {
     Navigator.push(context, MaterialPageRoute(builder: (_) {
       return PostDetails(
         post: post,
+        search: search,
       );
     }));
   }
@@ -232,8 +245,10 @@ class PostContainer extends StatelessWidget {
 
 class PostDetails extends StatelessWidget {
   final Post post;
+  final String search;
 
-  const PostDetails({Key key, this.post}) : super(key: key);
+  const PostDetails({Key key, @required this.post, @required this.search})
+      : super(key: key);
 
   Widget sectionHeading(BuildContext context, String heading) {
     return Padding(
@@ -258,14 +273,28 @@ class PostDetails extends StatelessWidget {
                   title: Text('Search for this tag'),
                   onTap: () {
                     Navigator.pop(context);
-                    Navigator.push(context, MaterialPageRoute(builder: (_) {
+                    Navigator.pushReplacement(context,
+                        MaterialPageRoute(builder: (_) {
                       return SearchIndexView(search: tag.name);
                     }));
                   }),
+              search == null
+                  ? null
+                  : ListTile(
+                      leading: Icon(Icons.search),
+                      title: Text('Refine search with this tag'),
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.pushReplacement(context,
+                            MaterialPageRoute(builder: (_) {
+                          return SearchIndexView(
+                              search: '${search.trim()} ${tag.name}');
+                        }));
+                      }),
               ListTile(
                   leading: Icon(Icons.block),
                   title: Text('Blacklist this tag')),
-            ],
+            ].where((widget) => widget != null).toList(),
           )));
         });
   }
@@ -273,6 +302,7 @@ class PostDetails extends StatelessWidget {
   TextSpan tagTextSpan(BuildContext context, Tag tag) {
     return TextSpan(
         text: tag.name + ' ',
+        style: Theme.of(context).textTheme.bodyText1,
         recognizer: (TapGestureRecognizer()
           ..onTap = () => showSheet(context, tag)));
   }
@@ -284,20 +314,22 @@ class PostDetails extends StatelessWidget {
           title: Text(post.id.toString()),
         ),
         body: Container(
-          padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Column(children: [
-            sectionHeading(context, 'Tags'),
-            RichText(
-                text: TextSpan(
-                    children: post.tags
-                        .map<TextSpan>((tag) => tagTextSpan(context, tag))
-                        .toList())),
-            sectionHeading(context, 'MD5'),
-            Text(post.file.md5),
-            sectionHeading(context, 'File Type'),
-            Text(post.file.ext),
-          ], crossAxisAlignment: CrossAxisAlignment.start),
-        ));
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: SingleChildScrollView(
+                child: SafeArea(
+              child: Column(children: [
+                sectionHeading(context, 'Tags'),
+                RichText(
+                    text: TextSpan(
+                        children: post.tags
+                            .map<TextSpan>((tag) => tagTextSpan(context, tag))
+                            .toList())),
+                sectionHeading(context, 'File Type'),
+                Text(post.file.ext),
+                sectionHeading(context, 'File Size'),
+                Text(filesize(post.file.size)),
+              ], crossAxisAlignment: CrossAxisAlignment.start),
+            ))));
   }
 }
 
@@ -311,38 +343,112 @@ class SearchView extends StatefulWidget {
 }
 
 class _SearchViewState extends State<SearchView> {
-  final String startingSearch;
-  _SearchViewState(this.startingSearch);
+  String ordering;
+  String search;
+
+  _SearchViewState._(this.search, this.ordering);
+
+  factory _SearchViewState(String search) {
+    if (search == null) {
+      return _SearchViewState._(null, null);
+    }
+
+    final List<String> tags =
+        search.split(' ').where((tag) => tag.isNotEmpty).toList();
+    String ordering;
+
+    final orderScore = tags.indexOf('order:score');
+    if (orderScore != -1) {
+      ordering = 'order:score';
+      tags.removeAt(orderScore);
+    }
+
+    final orderFav = tags.indexOf('order:favcount');
+    if (orderFav != -1) {
+      ordering = 'order:favcount';
+      tags.removeAt(orderFav);
+    }
+
+    return _SearchViewState._(tags.join(' '), ordering);
+  }
 
   @override
   Widget build(BuildContext context) {
+    final textController = TextEditingController();
+    textController.text = search == null ? '': search.trim() + ' ';
+    textController.selection = TextSelection.collapsed(offset: textController.text.length);
+
     return Scaffold(
         appBar: AppBar(
           title: Text('Search'),
         ),
         body: Container(
-          padding: EdgeInsets.all(8),
-          child: TextField(
-            controller: TextEditingController()
-              ..text =
-                  startingSearch == null ? '' : startingSearch.trim() + ' ',
-            autocorrect: false,
-            autofocus: true,
-            enableSuggestions: false,
-            textInputAction: TextInputAction.search,
-            decoration: InputDecoration(labelText: 'Search tags'),
-            onEditingComplete: () {},
-            onSubmitted: (search) {
-              if (search.isEmpty) {
-                Navigator.of(context).popUntil((route) => route.isFirst);
-              } else {
-                Navigator.pushReplacement(context,
-                    MaterialPageRoute(builder: (_) {
-                  return SearchIndexView(search: search);
-                }));
-              }
-            },
-          ),
-        ));
+            padding: EdgeInsets.all(8),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  TextField(
+                    controller: textController,
+                    autocorrect: false,
+                    autofocus: true,
+                    enableSuggestions: false,
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(labelText: 'Search tags'),
+                    onChanged: (val) => search = val.toLowerCase(),
+                    onEditingComplete: () {},
+                    onSubmitted: (search) {
+                      if (search.isEmpty) {
+                        Navigator.of(context)
+                            .popUntil((route) => route.isFirst);
+                      } else {
+                        Navigator.pushReplacement(context,
+                            MaterialPageRoute(builder: (_) {
+                          return SearchIndexView(
+                              search:
+                                  '${search.trim()} ${ordering != null ? ordering : ''}'
+                                      .trim());
+                        }));
+                      }
+                    },
+                  ),
+                  SizedBox(height: 8),
+                  Text('Order results',
+                      style: Theme.of(context).textTheme.subtitle1),
+                  Wrap(
+                    spacing: 8,
+                    children: <Widget>[
+                      ChoiceChip(
+                          label: Text('None'),
+                          selected: ordering == null,
+                          onSelected: (bool newVal) {
+                            if (newVal) {
+                              setState(() {
+                                ordering = null;
+                              });
+                            }
+                          }),
+                      ChoiceChip(
+                          label: Text('Score'),
+                          selected: ordering == "order:score",
+                          onSelected: (bool newVal) {
+                            if (newVal) {
+                              setState(() {
+                                ordering = "order:score";
+                              });
+                            }
+                          }),
+                      ChoiceChip(
+                          label: Text('Favorites'),
+                          selected: ordering == "order:favcount",
+                          onSelected: (bool newVal) {
+                            if (newVal) {
+                              setState(() {
+                                ordering = "order:favcount";
+                              });
+                            }
+                          }),
+                    ],
+                  )
+                ])));
   }
 }
